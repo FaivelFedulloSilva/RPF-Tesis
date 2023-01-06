@@ -1,6 +1,7 @@
 from gtfparse import read_gtf 
 import polars as pl
 
+pl.Config.set_tbl_cols(16)
 class GTFhandler:
     def __init__(self, path: str) -> None:
         self.__path: str = path
@@ -14,4 +15,5 @@ class GTFhandler:
 
 gtf = GTFhandler('./Data/genesFiltrada.gtf')
 # print(gtf._gtf_object.describe())
-gtf.filter_by_feature('CDS')     
+cds_df = gtf.filter_by_feature('CDS')     
+print(cds_df.sample(10))
