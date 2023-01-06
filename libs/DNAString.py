@@ -1,5 +1,4 @@
-from BioString import BioString 
-
+from .BioString import BioString
 
 complementary_bases = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 
@@ -36,9 +35,9 @@ class DNAString(BioString):
     
     # TODO Agregar DNA -> RNA
 
-dna = DNAString('AAAATGGC')
-print(dna.complement())
-print(dna.reverse())
-print(dna.reverse_complement())
-print(dna.get_sub_sequence(0,4))
-print(dna.count_base('A'))
+# dna = DNAString('AAAATGGC')
+# print(dna.complement())
+# print(dna.reverse())
+# print(dna.reverse_complement())
+# print(dna.get_sub_sequence(0,4))
+# print(dna.count_base('A'))

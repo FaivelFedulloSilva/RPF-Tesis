@@ -13,7 +13,7 @@ class GTFhandler:
         )
         return filtered_gtf
 
-gtf = GTFhandler('./Data/genesFiltrada.gtf')
-# print(gtf._gtf_object.describe())
-cds_df = gtf.filter_by_feature('CDS')     
-print(cds_df.sample(10))
+# gtf = GTFhandler('./Data/genesFiltrada.gtf')
+# # print(gtf._gtf_object.describe())
+# cds_df = gtf.filter_by_feature('CDS')     
+# print(cds_df.sample(10))
