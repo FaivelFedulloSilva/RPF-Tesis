@@ -4,17 +4,20 @@ complementary_bases = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 
 class DNAString(BioString):
 
+    def get_as_string(self):
+        return self.seq
+
     def complement(self):
         complementary_strand = ''
         for x in self.seq:
-            complementary_strand += complementary_bases[x]
-        return complementary_strand
+            complementary_strand += complementary_bases[x.upper()]
+        return DNAString(complementary_strand)
 
     def reverse(self):
-        return self.seq[::-1]
+        return DNAString(self.seq[::-1])
 
     def reverse_complement(self):
-        return self.complement()[::-1]
+        return DNAString(self.complement().get_as_string()[::-1])
 
     def count_base(self, base: chr) -> int:
         #TODO Cambiar lista por extension a definicion IUPAC para DNA
@@ -31,7 +34,7 @@ class DNAString(BioString):
 
     def get_sub_sequence(self, start: int, end: int):
         """ Returns a new DNAString object containing the subsequence from start to end (both inclusive). """
-        return DNAString(self.seq[start:end+1])
+        return DNAString(self.seq[start-1:end])
     
     # TODO Agregar DNA -> RNA
 

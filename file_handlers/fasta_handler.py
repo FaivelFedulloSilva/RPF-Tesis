@@ -13,12 +13,13 @@ class FastaHandler:
                 while line != '':
                     if line[0] == '>':
                         if current_id != None:
-                            referenceDNA.add_sequence(current_id, DNAString(' '.join(current_reference)))
-                        current_id = line[1:].split(' ')[0]
+                            referenceDNA.add_sequence(current_id, DNAString(''.join(current_reference)))
+                        current_id = line[1:].split(' ')[0].strip()
                         current_reference= []
                     else:
                         current_reference.append(line.strip())
                     line = file.readline()
+            return referenceDNA
 
         self.reference = read_fasta(path)
 
