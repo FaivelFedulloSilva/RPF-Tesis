@@ -1,14 +1,17 @@
 from gtfparse import read_gtf 
+import polars as pl
 
 class GTFhandler:
-    def __init__(self, path) -> None:
-        self.__path = path
+    def __init__(self, path: str) -> None:
+        self.__path: str = path
         self.__gtf_object = read_gtf(path)
-        print(self.__gtf_object)
 
     def filter_by_feature(self, feature: str):
-        print(self.__gtf_object[self.__gtf_object.feature == feature])
-        print(self.__gtf_object.feature.unique())
+        filtered_gtf = self.__gtf_object.filter(
+            pl.col("feature") == feature
+        )
+        return filtered_gtf
 
 gtf = GTFhandler('./Data/genesFiltrada.gtf')
+# print(gtf._gtf_object.describe())
 gtf.filter_by_feature('CDS')     
