@@ -133,3 +133,6 @@ Data/
 
 # Ignored file with internal notes
 Ignored.txt
+
+# Ignored vscode files
+.vscode

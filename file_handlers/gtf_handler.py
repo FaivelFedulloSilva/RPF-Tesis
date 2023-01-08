@@ -3,11 +3,13 @@ import polars as pl
 
 pl.Config.set_tbl_cols(16)
 class GTFhandler:
+
     def __init__(self, path: str) -> None:
         self.__path: str = path
         self.__gtf_object = read_gtf(path)
 
     def filter_by_feature(self, feature: str):
+
         filtered_gtf = self.__gtf_object.filter(
             pl.col("feature") == feature
         )

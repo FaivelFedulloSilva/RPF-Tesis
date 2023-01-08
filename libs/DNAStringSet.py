@@ -4,6 +4,7 @@ from .DNAString import DNAString
 
 @dataclass
 class DNAStringSet:
+
     sequences: dict[str, DNAString] = None
 
     def add_sequence(self, name: str, seq: DNAString):
