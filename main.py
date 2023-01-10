@@ -3,10 +3,13 @@ import pysam
 from file_handlers import GTFhandler
 from file_handlers import FastaHandler
 from file_handlers import BAMhandler
+from file_handlers import GTFobject
 import pandas as pd
 import polars as pl
 from polars import DataFrame
 from libs.DNAStringSet import DNAStringSet
+from collections import deque
+from math import trunc
 
 import plotly.graph_objects as go
 import plotly.express as px
@@ -16,6 +19,21 @@ TOTAL_PATH = './Data/totalRNA_01/accepted_hits_01.bam'
 REF_PATH = 'Data/reference/hg38.fa'
 GTF_PATH = 'Data/genesFiltrada.gtf'
 
+def rollling_function(ts: list[int], lag: int, influence: int, score: float):
+    if len(ts) < lag:
+        print("Time Serie too short for windows size")
+        return []
+    left = []
+    centered = []
+    right = []
+    for i in range(0, len(ts)-lag):
+        window = np.array(ts[i:i+lag])
+        mean = window.mean()
+        std = window.std()
+        left.append((ts[i]-mean)/std)
+        centered.append((ts[i + trunc(lag/2)]-mean)/std)
+        right.append((ts[i+lag]-mean)/std)
+    return {'left': left, 'center': centered, 'right': right}
 
 def get_normalize_rpf_over_rna(cov_rpf: list[int], cov_rna: list[int]):
     new_rna = [c if c > 0 else 1 for c in cov_rna]
@@ -24,7 +42,7 @@ def get_normalize_rpf_over_rna(cov_rpf: list[int], cov_rna: list[int]):
 def plot_comparative(cov_rpf: list[int], cov_rna: list[int], name: str):
     from plotly.subplots import make_subplots
     position = np.arange(0, len(cov_rna))
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True,subplot_titles=(f"RPF for {name}", f"RNA for {name}", f"RPF/RNA for {name}"))
     fig.update_yaxes(fixedrange=True)
     fig.add_trace(
         go.Bar(x=position, y=cov_rpf), row=1, col=1
@@ -52,8 +70,6 @@ def plot_with_plotly(cov: list[int], name: str):
     fig.show()
 
 
-
-
 def get_second_elements(l: list[str,str])->list[int]:
     new_list = []
     for elem in l:
@@ -61,18 +77,6 @@ def get_second_elements(l: list[str,str])->list[int]:
 
     return new_list
 
-
-def get_lazy_query(transcript: str, gtf: DataFrame):
-    query = (gtf
-            .lazy()
-            .groupby(by='transcript_id')
-            .agg(
-                [pl.col('seqname').unique().first(), pl.col('strand'), pl.col('start'),  pl.col('end')]
-                )
-            .filter(pl.col('transcript_id') == transcript)
-        )
-
-    return query
 
 def get_feature_sequence_and_coverage(df: DataFrame, dna: DNAStringSet, bam: BAMhandler):
     iter_df = df.iterrows(named=True)
@@ -92,37 +96,25 @@ def get_feature_sequence_and_coverage(df: DataFrame, dna: DNAStringSet, bam: BAM
         feature_sequences[row.transcript_id] = [''.join(feature_seq), feature_depth]
     return feature_sequences
 
-def get_base_sequence(gtf: DataFrame, dna: DNAStringSet = None, bam_rpf: BAMhandler = None, bam_rna: BAMhandler = None):
-    # print(gtf.sample(20))
-    # q = (gtf
-    #         .lazy()
-    #         .groupby(by='transcript_id')
-    #         .agg(
-    #             [pl.col('seqname').unique().first(), pl.col('strand'), pl.col('start'),  pl.col('end')]
-    #             )
-    #         .filter(pl.col('transcript_id') == 'NM_001127322')
-    #     )
-    q = get_lazy_query('NM_001127322', gtf)
-    r = get_lazy_query('NM_033657', gtf)
-    newdf = q.collect()
-    newdf.extend(r.collect())
-    print(newdf)
-    feature_sequences_rpf = get_feature_sequence_and_coverage(newdf, dna, bam_rpf)
-    feature_sequences_rna = get_feature_sequence_and_coverage(newdf, dna, bam_rna)
-    plot_comparative(feature_sequences_rpf['NM_033657'][1],feature_sequences_rna['NM_033657'][1], 'NM_033657')
-    input()
-    for key, value in feature_sequences_rpf.items():
-        plot_with_plotly(value[1], key)
-        input()
-        print(key, " -> ", value)
-    for key, value in feature_sequences_rna.items():
-        plot_with_plotly(value[1], key)
-        input()
-        print(key, " -> ", value)
-
-gtf = GTFhandler(GTF_PATH)
+gtf_file_handler = GTFhandler(GTF_PATH)
+gtf = gtf_file_handler.get_gtf_object()
 filtered_gtf = gtf.filter_by_feature('exon')
 dna = FastaHandler(REF_PATH)
 bam_rpf = BAMhandler(RPF_PATH, 'b')
 bam_rna = BAMhandler(TOTAL_PATH, 'b')
-get_base_sequence(filtered_gtf, dna.get_reference(), bam_rpf, bam_rna)
+
+# print(gtf.get_transcripts_ids())
+# transcripts = get_transcripts_ids(filtered_gtf)
+# print(transcripts)
+# print(transcripts[0].item())
+
+# input()
+
+
+# newdf = get_base_sequence(filtered_gtf, dna.get_reference(), bam_rpf, bam_rna)
+df = filtered_gtf.get_transcripts_data(['NM_001127322', 'NM_033657']) 
+feature_sequences_rpf = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rpf)
+feature_sequences_rna = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rna)
+# print(rollling_function(feature_sequences_rpf['NM_033657'][1],50,0,0))
+plot_comparative(feature_sequences_rpf['NM_001127322'][1],feature_sequences_rna['NM_001127322'][1], 'NM_001127322')
+plot_comparative(feature_sequences_rpf['NM_033657'][1],feature_sequences_rna['NM_033657'][1], 'NM_033657')
