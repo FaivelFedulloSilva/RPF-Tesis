@@ -14,6 +14,11 @@ from math import trunc
 import plotly.graph_objects as go
 import plotly.express as px
 
+
+from timeit import default_timer as timer
+
+from libs.DNAString import DNAString
+
 RPF_PATH = './Data/RPF_1/accepted_hits_01.bam'
 TOTAL_PATH = './Data/totalRNA_01/accepted_hits_01.bam'
 REF_PATH = 'Data/reference/hg38.fa'
@@ -35,6 +40,7 @@ def rollling_function(ts: list[int], lag: int, influence: int, score: float):
         right.append((ts[i+lag]-mean)/std)
     return {'left': left, 'center': centered, 'right': right}
 
+# TODO Actualizar para que se peuda pasar como parametro la forma de calcular. Por ejemplo usando una media movil con minimo de 1 para rna
 def get_normalize_rpf_over_rna(cov_rpf: list[int], cov_rna: list[int]):
     new_rna = [c if c > 0 else 1 for c in cov_rna]
     return [cov_rpf[i]/new_rna[i] for i in range(len(cov_rpf))]
@@ -78,7 +84,13 @@ def get_second_elements(l: list[str,str])->list[int]:
     return new_list
 
 
-def get_feature_sequence_and_coverage(df: DataFrame, dna: DNAStringSet, bam: BAMhandler):
+def filter_coverage(cov, filter = 0):
+    """ Return true if the quantity of non-zero values in cov is more than 100-filter percent"""
+    # return np.count_nonzero(cov)/np.size(cov) >= (100-filter)/100
+    return np.count_nonzero(cov)/np.size(cov)
+
+
+def get_feature_sequence_and_coverage(df: DataFrame, dna: DNAStringSet, bam: BAMhandler, filter: int):
     iter_df = df.iterrows(named=True)
     feature_sequences = {}
     for row in iter_df:
@@ -93,28 +105,69 @@ def get_feature_sequence_and_coverage(df: DataFrame, dna: DNAStringSet, bam: BAM
             cov = bam.region_coverage(row.seqname, row.start[index], row.end[index])
             feature_depth += get_second_elements(cov)
             feature_seq.append(seq.get_as_string())
-        feature_sequences[row.transcript_id] = [''.join(feature_seq), feature_depth]
+        # if filter_coverage(np.array(feature_depth), filter):
+        feature_sequences[row.transcript_id] = [''.join(feature_seq), filter_coverage(feature_depth) , feature_depth]
     return feature_sequences
 
+def get_feature_sequence_and_coverage_and_save_to_file(df: DataFrame, dna: DNAStringSet, bam: BAMhandler, file_path: str):
+    iter_df = df.iterrows(named=True)
+    feature_sequences = {
+        'transcript_id': [],
+        'coverage_percentage': [],
+        'sequence': [],
+        'coverage_per_base': []
+        }
+    for row in iter_df:
+        feature_seq = []
+        feature_depth = []
+        ref_seq = dna.get_sequence(row.seqname)
+        for index in range(len(row.start)):
+            seq = ref_seq.get_sub_sequence(row.start[index], row.end[index])
+            if row.strand[index] == '-':
+                seq = seq.reverse_complement()
+            # print(row.seqname, row.start[index], row.end[index])
+            cov = bam.region_coverage(row.seqname, row.start[index], row.end[index])
+            feature_depth += get_second_elements(cov)
+            feature_seq.append(seq.get_as_string())
+        # if filter_coverage(np.array(feature_depth), filter):
+        # feature_sequences[row.transcript_id] = [''.join(feature_seq), filter_coverage(feature_depth), feature_depth]
+        feature_sequences['transcript_id'].append(row.transcript_id)
+        feature_sequences['coverage_percentage'].append(filter_coverage(feature_depth))
+        feature_sequences['sequence'].append("".join(feature_seq))
+        feature_sequences['coverage_per_base'].append(feature_depth)
+    dt = pl.DataFrame(feature_sequences)
+    dt.write_json(file_path)
+
+# df = pl.read_json('coverage_rpf.json')
+# print(df)
+# 
+# input()
 gtf_file_handler = GTFhandler(GTF_PATH)
 gtf = gtf_file_handler.get_gtf_object()
 filtered_gtf = gtf.filter_by_feature('exon')
-dna = FastaHandler(REF_PATH)
+dna = FastaHandler(REF_PATH, polars=False)
 bam_rpf = BAMhandler(RPF_PATH, 'b')
 bam_rna = BAMhandler(TOTAL_PATH, 'b')
 
 # print(gtf.get_transcripts_ids())
-# transcripts = get_transcripts_ids(filtered_gtf)
+transcripts = filtered_gtf.get_transcripts_ids()
 # print(transcripts)
 # print(transcripts[0].item())
 
 # input()
 
-
+for x in [10, 100, 1000]:
 # newdf = get_base_sequence(filtered_gtf, dna.get_reference(), bam_rpf, bam_rna)
-df = filtered_gtf.get_transcripts_data(['NM_001127322', 'NM_033657']) 
-feature_sequences_rpf = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rpf)
-feature_sequences_rna = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rna)
+    df = filtered_gtf.get_transcripts_data(transcripts[0:x]) 
+# feature_sequences_rpf = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rpf, 80)
+
+    start = timer()
+    get_feature_sequence_and_coverage_and_save_to_file(df, dna.get_reference(), bam_rpf, f'coverage_rpf_{x}.json')
+
+    end = timer()
+    print(end - start)
+# print(feature_sequences_rpf)
+# feature_sequences_rna = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rna)
 # print(rollling_function(feature_sequences_rpf['NM_033657'][1],50,0,0))
-plot_comparative(feature_sequences_rpf['NM_001127322'][1],feature_sequences_rna['NM_001127322'][1], 'NM_001127322')
-plot_comparative(feature_sequences_rpf['NM_033657'][1],feature_sequences_rna['NM_033657'][1], 'NM_033657')
+# plot_comparative(feature_sequences_rpf['NM_001127322'][1],feature_sequences_rna['NM_001127322'][1], 'NM_001127322')
+# plot_comparative(feature_sequences_rpf['NM_033657'][1],feature_sequences_rna['NM_033657'][1], 'NM_033657')

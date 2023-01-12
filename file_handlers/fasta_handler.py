@@ -1,9 +1,9 @@
 from libs.DNAString import DNAString
 from libs.DNAStringSet import DNAStringSet
-
+import polars as pl
 
 class FastaHandler:
-    def __init__(self, path) -> None:
+    def __init__(self, path = '', polars=False) -> None:
         def read_fasta(path: str):
             referenceDNA = DNAStringSet()
             current_reference = []
@@ -20,13 +20,21 @@ class FastaHandler:
                         current_reference.append(line.strip())
                     line = file.readline()
             return referenceDNA
-
-        self.reference = read_fasta(path)
+        if polars:
+            self.reference = pl.scan_csv(file='reference.pls', sep='\t', has_header=False)
+        else:
+            self.reference = read_fasta(path)
 
     def get_reference(self):
         return self.reference 
 
+    def save_as_polars_file(self):
+        with open('reference.pls', 'x') as file:
+            for key,value in self.reference.sequences.items():
+                file.write(f'{key}\t{value.get_as_string()}\n')
+
 
       
-
-# faHandler = FastaHandler(r'./Data/reference/hg38.fa')
+if __name__ == '__main__':
+    faHandler = FastaHandler(r'./Data/reference/hg38.fa')
+    faHandler.save_as_polars_file()

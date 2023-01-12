@@ -3,7 +3,7 @@ from BioString import BioString
 
 complementary_bases = {'A': 'U', 'U': 'A', 'G': 'C', 'C': 'G'}
 
-class DNAString(BioString):
+class RNAString(BioString):
     
     def complement(self):
         complementary_strand = ''
