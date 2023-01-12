@@ -5,13 +5,21 @@ import plotly.graph_objects as go
 import numpy as np
 
 import pandas as pd
+import polars as pl
 from polars import DataFrame
 
 from file_handlers import GTFhandler, GTFobject, FastaHandler, BAMhandler
 from libs import DNAStringSet
 
-def get_normalize_rpf_over_rna(cov_rpf: list[int], cov_rna: list[int]):
-    new_rna = [c if c > 0 else 1 for c in cov_rna]
+
+#TODO: cambiar methods a una clase de contantes
+def get_normalize_rpf_over_rna(cov_rpf: list[int], cov_rna: list[int], offset: int=1, window_size:int = 0, method: str= 'Offset'):
+    if method == "Offset":
+        new_rna = [c if c > 0 else offset for c in cov_rna]
+    else:
+        new_rna = [int(np.mean(cov_rna[i-window_size: i+window_size])) if cov_rna[i] == 0 else cov_rna[i]for i in range(window_size, len(cov_rna)-window_size)]
+        new_rna = [c for c in cov_rna[:window_size]] + new_rna + [c for c in cov_rna[-window_size:]]
+        new_rna = [c if c > 0 else offset for c in new_rna]
     return [cov_rpf[i]/new_rna[i] for i in range(len(cov_rpf))]
 
 def get_second_elements(l: list[str,str])->list[int]:
@@ -45,38 +53,65 @@ TOTAL_PATH = './Data/totalRNA_01/accepted_hits_01.bam'
 REF_PATH = 'Data/reference/hg38.fa'
 GTF_PATH = 'Data/genesFiltrada.gtf'
 
-dna = FastaHandler(REF_PATH)
-bam_rpf = BAMhandler(RPF_PATH, 'b')
-bam_rna = BAMhandler(TOTAL_PATH, 'b')
+df_rpf: DataFrame = pl.read_json('coverage_rpf.json')
+df_rna: DataFrame = pl.read_json('coverage_rna.json')
+
+transcript_ids = df_rpf.select('transcript_id').to_series().to_list()
 
 
-gtf_file_handler = GTFhandler(GTF_PATH)
-gtf = gtf_file_handler.get_gtf_object()
-filtered_gtf = gtf.filter_by_feature('exon')
-filtered_gtf_transcripts = filtered_gtf.get_transcripts_ids()
 
-df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/gapminderDataFiveYear.csv')
+
+
+# dna = FastaHandler(REF_PATH)
+# bam_rpf = BAMhandler(RPF_PATH, 'b')
+# bam_rna = BAMhandler(TOTAL_PATH, 'b')
+
+
+# gtf_file_handler = GTFhandler(GTF_PATH)
+# gtf = gtf_file_handler.get_gtf_object()
+# filtered_gtf = gtf.filter_by_feature('exon')
+# filtered_gtf_transcripts = filtered_gtf.get_transcripts_ids()
+
+
 
 app = Dash(__name__)
 
 app.layout = html.Div([
     dcc.Graph(id='comparative-figure'),
-    dcc.Dropdown(filtered_gtf_transcripts, value=filtered_gtf_transcripts[0], id='feature-select', ),
+    dcc.Dropdown(transcript_ids, value=transcript_ids[0], id='feature-select', ),
+    dcc.Slider(0, 80, 1,
+               value=10,
+               id='my-slider'
+    ),
+    dcc.RadioItems(['Offset', 'Mean'], 'Offset', id='method'),
+    dcc.Slider(1, 10, 1,
+               value=3,
+               id='window-size'
+    ),
 ])
 
 
 @app.callback(
     Output('comparative-figure', 'figure'),
-    Input('feature-select', 'value')
+    Input('feature-select', 'value'),
+    Input('window-size', 'value'),
+    Input('method', 'value')
 )
-def update_figure(selected_feature):
-    df = filtered_gtf.get_transcripts_data([selected_feature]) 
+def update_figure(selected_feature, window_size, method):
+    
+    # df = filtered_gtf.get_transcripts_data([selected_feature]) 
 
-    feature_sequences_rpf = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rpf)
-    feature_sequences_rna = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rna)
+    # feature_sequences_rpf = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rpf)
+    # feature_sequences_rna = get_feature_sequence_and_coverage(df, dna.get_reference(), bam_rna)
 
-    cov_rpf = feature_sequences_rpf[selected_feature][1]  
-    cov_rna = feature_sequences_rna[selected_feature][1]
+    feature_sequences_rpf = df_rpf.filter(pl.col('transcript_id') == selected_feature)
+    feature_sequences_rna = df_rna.filter(pl.col('transcript_id') == selected_feature)
+
+    # cov_rpf = feature_sequences_rpf[selected_feature][1]  
+    # cov_rna = feature_sequences_rna[selected_feature][1]
+
+    cov_rpf = feature_sequences_rpf.select('coverage_per_base').to_series().to_list()[0]
+    cov_rna = feature_sequences_rna.select('coverage_per_base').to_series().to_list()[0]
 
     position = np.arange(0, len(cov_rpf))
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True,subplot_titles=(f"RPF for {selected_feature}", f"RNA for {selected_feature}", f"RPF/RNA for {selected_feature}"))
@@ -88,10 +123,24 @@ def update_figure(selected_feature):
         go.Bar(x=position, y=cov_rna), row=2, col=1
         )
     fig.add_trace(
-        go.Bar(x=position, y=get_normalize_rpf_over_rna(cov_rpf, cov_rna)), row=3, col=1
+        go.Bar(x=position, y=get_normalize_rpf_over_rna(cov_rpf, cov_rna, offset=1,window_size=window_size,method=method)), row=3, col=1
         )
-
+    print('updating', selected_feature, window_size, method)
     return fig
+
+@app.callback(
+    Output('feature-select', 'options'),
+    Input('my-slider', 'value')
+)
+def update_dropdown(selected_filter):
+    transcript_ids_filtered = (df_rpf
+                .lazy()
+                .filter(pl.col('coverage_percentage') > selected_filter/100)
+                .select('transcript_id')
+            ).collect().to_series().to_list()
+
+    return transcript_ids_filtered
+
 
 
 if __name__ == '__main__':
