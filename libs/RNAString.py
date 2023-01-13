@@ -32,7 +32,7 @@ class RNAString(BioString):
 
     def get_sub_sequence(self, start: int, end: int):
         """ Returns a new RNAString object containing the subsequence from start to end (both inclusive). """
-        return DNAString(self.seq[start-1:end])
+        return RNAString(self.seq[start-1:end])
 
     #TODO Agregar RNA -> DNA
     #TODO gregar RNA -> AA

@@ -24,21 +24,39 @@ TOTAL_PATH = './Data/totalRNA_01/accepted_hits_01.bam'
 REF_PATH = 'Data/reference/hg38.fa'
 GTF_PATH = 'Data/genesFiltrada.gtf'
 
-def rollling_function(ts: list[int], lag: int, influence: int, score: float):
-    if len(ts) < lag:
-        print("Time Serie too short for windows size")
-        return []
-    left = []
-    centered = []
-    right = []
-    for i in range(0, len(ts)-lag):
-        window = np.array(ts[i:i+lag])
-        mean = window.mean()
-        std = window.std()
-        left.append((ts[i]-mean)/std)
-        centered.append((ts[i + trunc(lag/2)]-mean)/std)
-        right.append((ts[i+lag]-mean)/std)
-    return {'left': left, 'center': centered, 'right': right}
+def get_regions_from_outliers(l: list[list[int,int]], min_distance: int, min_len: int):
+    regions = [[l[0]]]
+    last_outlier = l[0]
+    for outlier in l[1:]:
+        if outlier[0] - last_outlier[0] < min_distance:
+            regions[-1].append(outlier)
+        else:
+            regions.append([outlier])
+        last_outlier = outlier
+    filtered_regions = [region for region in regions if len(region) >= min_len ]
+
+    parsed_regions =[]
+    region = {'start': float('inf'), 'end': float('-inf'), 'values': []}
+    for reg in filtered_regions:
+        for r in reg:
+            if r[0] < region['start']:
+                region['start'] = r[0]
+            if r[0] > region['end']:
+                region['end'] = r[0]
+            region['values'].append(r[1])
+        parsed_regions.append(region)
+        region = {'start': float('inf'), 'end': float('-inf'), 'values': []}
+
+    return parsed_regions
+    
+
+def detect_outliers(ts: list[int],min_distance, min_len):
+    l = np.array(ts)
+    [q1,q3] = np.quantile(l, [.25,.75])
+    inter_quantile = q3-q1
+    max = q3+inter_quantile
+    print(max)
+    return get_regions_from_outliers([[i, l[i]] for i in range(len(l)) if l[i] > max ],min_distance, min_len)
 
 # TODO Actualizar para que se peuda pasar como parametro la forma de calcular. Por ejemplo usando una media movil con minimo de 1 para rna
 def get_normalize_rpf_over_rna(cov_rpf: list[int], cov_rna: list[int]):
